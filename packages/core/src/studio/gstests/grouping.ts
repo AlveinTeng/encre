@@ -50,10 +50,12 @@ export function init_graph(workflow: SubGraph, group_set: Array<RecordId[]>, nod
    
     const startPorts = workflow.graphInputNameMap; 
     const nodeConMap = workflow.nodeConnMap;
+    console.log("In init_graph, the nodeConmap is: ", nodeConMap);
     const inDegreeVec: Record<RecordId, number> = {};
     const q: RecordId[] = [];
 
     for (const input of Object.values(startPorts)) {
+        console.log("starter node id is: ", input.nodeId);
         q.push(input.nodeId);
         group_set.push([input.nodeId]);
     }
@@ -66,21 +68,21 @@ export function init_graph(workflow: SubGraph, group_set: Array<RecordId[]>, nod
         const connections = nodeConMap[node];
         for(const connection of connections) {
             if(connection.fromNodeId == node){
-                console.log("connection.fromNodeId == node");
                 const toNode = connection.toNodeId;
                 q.push(toNode);
-                console.log("toNode is:", toNode);
+                // console.log("toNode is:", toNode);
                 if (inDegreeVec[toNode]) {
                     inDegreeVec[toNode]++;
                 } else {
                     inDegreeVec[toNode] = 1;
                     group_set.push([toNode]);
-                    // console.log("group_set is:", group_set);
                 }
             }
         }
         
     }
+    console.log("In init graph, group set is: ", group_set);
+    // console.log(inDegreeVec);
 
     for (const s of group_set) {
         // group_ip[s] = ip_list[globalnode % 6];
@@ -102,8 +104,8 @@ export function init_graph(workflow: SubGraph, group_set: Array<RecordId[]>, nod
  * @returns The set that contains the node, or undefined if not found.
  */
 function findSet(node: RecordId, groupSet: Array<RecordId[]>): RecordId[] | undefined {
-    console.log("in findSet, node is:", node);
-    console.log("in findSet, groupSet is:", groupSet);
+    // console.log("in findSet, node is:", node);
+    // console.log("in findSet, groupSet is:", groupSet);
     for (const group of groupSet) {
         if (group.includes(node)) {
             return group;
@@ -126,6 +128,7 @@ function findSet(node: RecordId, groupSet: Array<RecordId[]>): RecordId[] | unde
  */
 function topo_search(workflow: SubGraph, inDegreeVec: Record<string, number>,
     groupSet: Array<RecordId[]>, Intenet_latency: boolean = false): [Record<RecordId, number[]>, {[name: RecordId]: [RecordId, number]}] {
+    console.log("At the beginning of topo_search, the inDegreeVec is:", inDegreeVec);
     const distVec: Record<RecordId, number[]> = {};
     const prevVec: {[name: RecordId]: [RecordId, number]} = {};
 
@@ -137,7 +140,7 @@ function topo_search(workflow: SubGraph, inDegreeVec: Record<string, number>,
     const W = 10; // Temporay hardcoded network latency
     for (const input of Object.values(startPorts)) {
         q.push(input.nodeId);
-        distVec[input.nodeId] = [nodeImplMap[input.nodeId].runtime, 0];
+        distVec[input.nodeId] = [nodeImplMap[input.nodeId].runtime, 0]; // for startnodes, the dist should just be its runtime and cuz there is no parent to it, the parent edge is 0
         prevVec[input.nodeId] = [defaultID, defaultLength];
     }
 
@@ -166,14 +169,18 @@ function topo_search(workflow: SubGraph, inDegreeVec: Record<string, number>,
                         prevVec[next_node] = [prev_id, w];
                     }
                 }
-                inDegreeVec[next_node]--;
-                if (inDegreeVec[next_node] == 0){
+                let copyOfInDegreeVec = Object.values(inDegreeVec).slice();
+                copyOfInDegreeVec[next_node] -= 1;
+                // inDegreeVec[next_node]--;
+                if (copyOfInDegreeVec[next_node] == 0){
                     q.push(next_node);
                 }
 
             }
         }
     }
+
+    console.log("At the end of topo_search, the inDegreeVec is:",inDegreeVec);
    
     return [distVec, prevVec];
 }
@@ -189,19 +196,25 @@ const GOUP_LIMIT = 10;
  * @returns A boolean indicating whether the nodes can be merged.
  */
 function mergeable(node1: RecordId, node2: RecordId, workflow: SubGraph, groupSet: Array<RecordId[]>, nodeInfo: { [key: number]: number }): [boolean, Array<RecordId[]>]{
-    console.log("mergeable");
+    // console.log("mergeable");
+    // console.log("In mergeable, the initial groupset is: ", groupSet);
+    // console.log("In mergeable, the initial node1 is: ", node1);
+    // console.log("In mergeable, the initial node2 is: ", node2);
+    // console.log("groupSet is:", groupSet);
+    // console.log("node1 is:", node1);
+    // console.log("node2 is:", node2);
     const nodeSet1 = findSet(node1, groupSet);
     if(!nodeSet1){
-        console.log("node set 1 is not found");
+        // console.log("node set 1 is not found");
         return [false, groupSet];
     }
     if(nodeSet1?.includes(node2)){
-        console.log("node set 1 includes node 2");
+        // console.log("node set 1 includes node 2");
         return [false, groupSet];
     }
     const nodeSet2 = findSet(node2, groupSet);
     if(!nodeSet2){
-        console.log("node set 2 is not found");
+        // console.log("node set 2 is not found");
         return [false, groupSet];
     }
     //check if the group limit is reached
@@ -235,16 +248,16 @@ function mergeable(node1: RecordId, node2: RecordId, workflow: SubGraph, groupSe
     //check memroy limit: skip for now, because we are running locally
 
     //merge sets and apdate scale
-    console.log("node set 1 is:", nodeSet1);
-    console.log("node set 2 is:", nodeSet2);
+    // console.log("node set 1 is:", nodeSet1);
+    // console.log("node set 2 is:", nodeSet2);
     
     const newGroupSet = [...nodeSet1, ...nodeSet2];
-    console.log("new group set to be added is:", newGroupSet);
-    console.log("before merge, the groupSet is:", groupSet);
+    // console.log("new group set to be added is:", newGroupSet);
+    // console.log("before merge, the groupSet is:", groupSet);
     groupSet = groupSet.filter(set => set !== nodeSet1);
     groupSet = groupSet.filter(set => set !== nodeSet2);
     groupSet.push(newGroupSet);
-    console.log("after merge, the groupSet is:", groupSet);
+    // console.log("after merge, the groupSet is:", groupSet);
     groupIp.set(newGroupSet, bestFitAddr);
     if(nodeSet1Scale){
         nodeInfo[bestFitAddr] -= nodeSet1Scale;
@@ -282,13 +295,14 @@ function mergeable(node1: RecordId, node2: RecordId, workflow: SubGraph, groupSe
  * @returns A boolean indicating whether the paths were successfully merged.
  */
 function mergePath(critVec:{[name: RecordId]: [RecordId, number]}, workflow: SubGraph, nodeInfo: { [key: number]: number }, groupSet: Array<RecordId[]>): [boolean, Array<RecordId[]>] {
-    console.log("merge path");
+    // console.log("merge path");
+    // console.log("in mergePath, the critVec is:", critVec);
     for(const [key, value] of Object.entries(critVec)){
         const sourceNode = key as RecordId;
         const targetNode = value[0] as RecordId;
         const [ismergeable, newGroupSet] = mergeable(sourceNode, targetNode, workflow, groupSet, nodeInfo);
         if(ismergeable){
-            console.log("mergeable");
+            // console.log("mergeable");
             return [true, newGroupSet];
         }
     }
@@ -338,18 +352,24 @@ function isNodeIdInStartPorts(nodeId: RecordId, startPorts: Record<string, { nod
  * @returns An array containing the grouped nodes and the critical path function.
  */
 export function grouping(workflow: SubGraph, nodeInfo: { [key: number]: number }): [Array<Array<RecordId>>, Array<RecordId>] {
+    console.log("called grouping");
     let groupSet: Array<Array<RecordId>> = [];
     let criticalPathFunction: RecordId[] = [];
-    console.log("grouping");
+    // console.log("grouping");
     const inDegreeVec = init_graph(workflow, groupSet, nodeInfo);
     for (;;) {
-        console.log("in grouping, groupset length is:", groupSet.length);
+        // console.log("in grouping, groupset length is:", groupSet.length);
+        // console.log('in grouping, indegreeVec is:', inDegreeVec);
         if (groupSet.length == 1){
+            console.log("groupSet length is 1");
             break;
         }
         //topo dp: find each node's longest dis and its predecessor
+        console.log('in grouping, indegreeVec is:', inDegreeVec);
         const [distVec, prevVec] = topo_search(workflow, inDegreeVec, groupSet);
+        console.log("in grouping, prevVec is:", prevVec);
         const longestDist = getLongestDist(workflow, distVec);
+        // console.log("longestDist is:", longestDist);
         let tmpNodeId = longestDist[1];
 
         // find the longest path, edge descent sorted
@@ -386,6 +406,8 @@ export function grouping(workflow: SubGraph, nodeInfo: { [key: number]: number }
         //     break;
         // }
     }
+    // console.log("groupSet is:", groupSet);
+    // console.log("criticalPathFunction is:", criticalPathFunction);
 
     return [groupSet, criticalPathFunction];
 }
